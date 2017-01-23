@@ -1,0 +1,9 @@
+<component name="ArtifactManager">
+  <artifact type="jar" name="Med:jar">
+    <output-path>$PROJECT_DIR$/out/artifacts/Med_jar</output-path>
+    <root id="archive" name="Med.jar">
+      <element id="module-output" name="Med" />
+      <element id="extracted-dir" path="$PROJECT_DIR$/libs/aquafx-0.1.jar" path-in-jar="/" />
+    </root>
+  </artifact>
+</component>
