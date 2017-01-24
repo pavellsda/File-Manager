@@ -35,9 +35,7 @@ public final class PathTreeItem extends TreeItem<String> {
 
         CompletableFuture
                 .supplyAsync(() -> Utils.getSystemIcon(path))
-                .whenComplete((res, e) -> {
-                    Platform.runLater(() -> this.setGraphic(new ImageView(res)));
-                });
+                .whenComplete((res, e) -> Platform.runLater(() -> this.setGraphic(new ImageView(res))));
 
 
         addEventHandler(TreeItem.branchExpandedEvent(), (EventHandler<TreeModificationEvent<String>>) ev -> {

@@ -13,7 +13,6 @@ import javafx.beans.value.ObservableValue;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.concurrent.Task;
-import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
@@ -95,12 +94,13 @@ public class MainWindowController {
           При нажатии происходит переход в каталог с выбранным файлом
          */
         listFind.setOnMouseClicked(event -> {
-            listFind.setVisible(false);
-            tableView.setVisible(true);
+            disableFindTable();
+
             String path = listFind.getSelectionModel().getSelectedItem();
-            String[] avaiblePath = path.split("`");
-            setCurPath(avaiblePath[0]);
-            history.add(avaiblePath[0]);
+            String[] availablePath = path.split("`");
+
+            setCurPath(availablePath[0]);
+            history.add(availablePath[0]);
             label_current_folder.setText(getCurPath());
             listFind.getItems().clear();
         });
@@ -114,46 +114,19 @@ public class MainWindowController {
           При нажатии происходит переход в выбранный каталог
          */
         listView.setOnMouseClicked(event -> {
-            listFind.setVisible(false);
-            tableView.setVisible(true);
+
+            disableFindTable();
+
             String path = System.getProperty("user.home");
-            switch(listView.getSelectionModel().getSelectedItem()){
-                case "Home":
-                    setCurPath(path);
-                    history.add(path);
-                    label_current_folder.setText(getCurPath());
-                    break;
-                case "Downloads":
-                    path = path+"/Downloads";
-                    setCurPath(path);
-                    history.add(path);
-                    label_current_folder.setText(getCurPath());
-                    break;
-                case "Documents":
-                    path = path+"/Documents";
-                    setCurPath(path);
-                    history.add(path);
-                    label_current_folder.setText(getCurPath());
-                    break;
-                case "Music":
-                    path = path+"/Music";
-                    setCurPath(path);
-                    history.add(path);
-                    label_current_folder.setText(getCurPath());
-                    break;
-                case "Pictures":
-                    path = path+"/Pictures";
-                    setCurPath(path);
-                    history.add(path);
-                    label_current_folder.setText(getCurPath());
-                    break;
-                case "Trash":
-                    path = path+"/.local/share/Trash/files";
-                    setCurPath(path);
-                    history.add(path);
-                    label_current_folder.setText(getCurPath());
-                    break;
-            }
+            String choice = listView.getSelectionModel().getSelectedItem();
+
+            if(!Objects.equals(choice, "Home"))
+                path = path+"/"+choice;
+
+            setCurPath(path);
+            history.add(path);
+            label_current_folder.setText(getCurPath());
+
         });
 
     }
@@ -169,10 +142,10 @@ public class MainWindowController {
           Обработчик событий для меню
           Обработчик привязывается к конкретной функции, например к функции menuCut(ev)
          */
-        cut.setOnAction(this::menuCut);
-        copy.setOnAction(this::menuCopy);
-        paste.setOnAction(this::menuPaste);
-        delete.setOnAction(this::menuDelete);
+        cut.setOnAction((ev) -> menuCut());
+        copy.setOnAction((ev) -> menuCopy());
+        paste.setOnAction((ev1) -> menuPaste());
+        delete.setOnAction((ev) -> menuDelete());
     }
 
     private void initDirTree(){
@@ -365,7 +338,7 @@ public class MainWindowController {
         });
     }
 
-    private void menuCut(ActionEvent ev){
+    private void menuCut(){
         if(tableView.getSelectionModel().getSelectedItems().size()>0) {
             ObservableList itemsToCopy = tableView.getSelectionModel().getSelectedItems();
             Path path[] = new Path[itemsToCopy.size()];
@@ -387,7 +360,7 @@ public class MainWindowController {
     /*
      * Обработчик кнопки copy в popupMenu
      */
-    private void menuCopy(ActionEvent ev){
+    private void menuCopy(){
         if(tableView.getSelectionModel().getSelectedItems().size()>0) {// Проверка выбран ли файл для копирования
             ObservableList itemsToCopy = tableView.getSelectionModel().getSelectedItems();// Записываем все выбранные файлы в таблице
             Path path[] = new Path[itemsToCopy.size()];
@@ -410,7 +383,7 @@ public class MainWindowController {
     /*
      * Обработчик кнопки delete в popupMenu
      */
-    private void menuDelete(ActionEvent ev){
+    private void menuDelete(){
         if(tableView.getSelectionModel().getSelectedItems().size()>0) { //Выбран ли файл для удаления
             ObservableList itemsToDelete = tableView.getSelectionModel().getSelectedItems();
             Path path[] = new Path[itemsToDelete.size()]; //Создание массива путей к файлам для удаления
@@ -434,7 +407,7 @@ public class MainWindowController {
      * Обработчик кнопки paste в popupMenu
      */
 
-    private void menuPaste(ActionEvent ev) {
+    private void menuPaste() {
         Task<Void> task = new Task<Void>() {
             @Override
             public Void call() {
@@ -556,9 +529,6 @@ public class MainWindowController {
         updatePath();
     }
 
-    private boolean createDir(File fileToCreate){
-        return fileToCreate.mkdirs();
-    }
     /*
      * Обработчик кнопки findFile
      * Осуществляет поиск по имени/части имени файла
@@ -628,6 +598,12 @@ public class MainWindowController {
 
     }
 
+    private void disableFindTable(){
+
+        listFind.setVisible(false);
+        tableView.setVisible(true);
+    }
+
     /*
      * Функция для копирования/перемещения файлов
      * Происходит проверка является ли файл каталогом, если да, то все файлы в нем копируются/перемещаются
@@ -664,6 +640,10 @@ public class MainWindowController {
         if(cut)
             delete(src);
 
+    }
+
+    private boolean createDir(File fileToCreate){
+        return fileToCreate.mkdirs();
     }
 
     /*
