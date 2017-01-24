@@ -18,6 +18,7 @@ import java.util.concurrent.CompletableFuture;
 public final class PathTreeItem extends TreeItem<String> {
     public Path myPath;
 
+
     public PathTreeItem(Path path) {
         super(path.toString());
         this.myPath = path;
@@ -39,23 +40,20 @@ public final class PathTreeItem extends TreeItem<String> {
                 });
 
 
-        addEventHandler(TreeItem.branchExpandedEvent(), new EventHandler<TreeModificationEvent<String>>() {
-            @Override
-            public void handle(TreeItem.TreeModificationEvent<String> ev) {
-                PathTreeItem source = (PathTreeItem) ev.getSource();
-                if (!source.myPath.equals(myPath)) return;
-                if (source.getChildren().isEmpty()) {
-                    if (!source.isLeaf()) {
-                        try {
-                            DirectoryStream<Path> dir = Files.newDirectoryStream(myPath);
-                            for (Path file : dir) {
-                                if (Files.isDirectory(file)) {
-                                    source.getChildren().add(new PathTreeItem(file));
-                                }
+        addEventHandler(TreeItem.branchExpandedEvent(), (EventHandler<TreeModificationEvent<String>>) ev -> {
+            PathTreeItem source = (PathTreeItem) ev.getSource();
+            if (!source.myPath.equals(myPath)) return;
+            if (source.getChildren().isEmpty()) {
+                if (!source.isLeaf()) {
+                    try {
+                        DirectoryStream<Path> dir = Files.newDirectoryStream(myPath);
+                        for (Path file : dir) {
+                            if (Files.isDirectory(file)) {
+                                source.getChildren().add(new PathTreeItem(file));
                             }
-                        } catch (IOException e) {
-                            e.printStackTrace();
                         }
+                    } catch (IOException e) {
+                        e.printStackTrace();
                     }
                 }
             }
