@@ -38,12 +38,12 @@
                       <RowConstraints maxHeight="529.0" minHeight="10.0" prefHeight="529.0" vgrow="SOMETIMES" />
                     </rowConstraints>
                      <children>
-                        <TreeView fx:id="tree_folders_list" prefHeight="387.0" prefWidth="290.0" />
+                        <TreeView fx:id="foldersTree" prefHeight="387.0" prefWidth="290.0" />
                         <ListView fx:id="listView" prefHeight="354.0" prefWidth="290.0" GridPane.rowIndex="1" />
                      </children>
                   </GridPane>
                   <ListView fx:id="listFind" prefHeight="200.0" prefWidth="200.0" GridPane.columnIndex="1" />
-                  <TableView fx:id="tableView" GridPane.columnIndex="1" GridPane.halignment="CENTER" GridPane.hgrow="ALWAYS" GridPane.valignment="CENTER" GridPane.vgrow="ALWAYS">
+                  <TableView fx:id="fileTable" GridPane.columnIndex="1" GridPane.halignment="CENTER" GridPane.hgrow="ALWAYS" GridPane.valignment="CENTER" GridPane.vgrow="ALWAYS">
                     <columns>
                       <TableColumn prefWidth="75.0" text="Name" />
                       <TableColumn prefWidth="75.0" text="Date" />
@@ -64,7 +64,7 @@
                <children>
                   <Pane prefHeight="200.0" prefWidth="200.0" GridPane.columnIndex="2">
                      <children>
-                        <Label fx:id="label_current_folder" layoutX="-22.0" layoutY="6.0" prefHeight="15.0" prefWidth="351.0">
+                        <Label fx:id="currentFolderLabel" layoutX="-22.0" layoutY="6.0" prefHeight="15.0" prefWidth="351.0">
                            <effect>
                               <Blend />
                            </effect>

@@ -30,7 +30,7 @@ import java.nio.file.*;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
-import static com.med.utils.Utils.delete;
+import static com.med.utils.Utils.alert;
 import static java.lang.String.valueOf;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
@@ -42,23 +42,24 @@ import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 public class MainWindowController {
 
     @FXML
-    public TreeView<String> tree_folders_list; //Дерево каталогов
-    public TableView tableView; //Таблица файлов, находящихся в выбранном каталоге
-    public Label label_current_folder; //Отображает текущий каталог
+    public TreeView<String> foldersTree; //Дерево каталогов
+    public TableView fileTable; //Таблица файлов, находящихся в выбранном каталоге
+    public Label currentFolderLabel; //Отображает текущий каталог
     public Button backButton; //Кнопка для возрата в предыдущий каталог
     public Button forwardButton; //Кнопка для перехода в следующий каталог в истории
     public Button findFileButton; //Кнопка поиска файла по имени/части имени
     public Button addDirButton; //Кнопка для создания каталога
     public ListView<String> listView; //Список стандартных каталогов(Home, Documents...)
-    private final ContextMenu contextMenu = new ContextMenu(); //Меню, вызываемое по правому щелчку мыши
+    private final ContextMenu popupMenu = new ContextMenu(); //Меню, вызываемое по правому щелчку мыши
     public ListView<String> listFind; //Список, выводящий результаты поиска
-
-    private StringProperty curPath; //Текущий путь к каталогу
+    
+    private StringProperty currentPath; //Текущий путь к каталогу
     private History history; //Класс истории(для перемещения вперед/назад)
     private Map<Path, Image> iconImgCache = new HashMap<>(); //Контейнер для хранения иконок каталогов/файлов
-    private File[] toCopy; //Хранит файлы для копирования
-    private File[] toMove; //Хранит файлы для перемещения
-    private boolean directoryMove = false; //Если перемещается/копируется директория, то true
+    private File[] filesToCopy; //Хранит файлы для копирования
+    private File[] filesToMove; //Хранит файлы для перемещения
+    private boolean cutCheck = false; //Если перемещается/копируется директория, то true
+    private String osName;
 
     public MainWindowController() {
     }
@@ -67,8 +68,10 @@ public class MainWindowController {
     @FXML
     private void initialize() throws IOException {
 
-        curPath = new SimpleStringProperty();
+        currentPath = new SimpleStringProperty();
         history = new History();
+
+        setOs(getOS());
 
         initListFind(); //Инициализация списка поиска
         initListView(); //Инициализация списка основных каталогов
@@ -80,9 +83,9 @@ public class MainWindowController {
         /*
          Устанавливаем домашний каталог
          */
-        setCurPath(System.getProperty("user.home"));
+        setCurrentPath(System.getProperty("user.home"));
         history.add(System.getProperty("user.home"));
-        label_current_folder.setText(System.getProperty("user.home"));
+        currentFolderLabel.setText(System.getProperty("user.home"));
     }
 
     private void initListFind(){
@@ -99,9 +102,9 @@ public class MainWindowController {
             String path = listFind.getSelectionModel().getSelectedItem();
             String[] availablePath = path.split("`");
 
-            setCurPath(availablePath[0]);
+            setCurrentPath(availablePath[0]);
             history.add(availablePath[0]);
-            label_current_folder.setText(getCurPath());
+            currentFolderLabel.setText(getCurrentPath());
             listFind.getItems().clear();
         });
     }
@@ -120,12 +123,24 @@ public class MainWindowController {
             String path = System.getProperty("user.home");
             String choice = listView.getSelectionModel().getSelectedItem();
 
-            if(!Objects.equals(choice, "Home"))
-                path = path+"/"+choice;
+            switch (choice) {
+                case "Home":
+                    break;
+                case "Trash":
+                    if(Objects.equals(osName, "windows"))
+                        path = "C:\\$Recycle.bin";
+                    if(Objects.equals(osName, "linux"))
+                        path = path + "/.local/share/Trash/files";
+                    break;
+                default:
+                    path = path+"/"+choice;
+                    break;
+            }
 
-            setCurPath(path);
+
+            setCurrentPath(path);
             history.add(path);
-            label_current_folder.setText(getCurPath());
+            currentFolderLabel.setText(getCurrentPath());
 
         });
 
@@ -136,50 +151,50 @@ public class MainWindowController {
         MenuItem copy = new MenuItem("Copy");
         MenuItem paste = new MenuItem("Paste");
         MenuItem delete = new MenuItem("Delete");
-        contextMenu.getItems().addAll(cut, copy, paste, delete);
+        popupMenu.getItems().addAll(cut, copy, paste, delete);
 
         /*
           Обработчик событий для меню
           Обработчик привязывается к конкретной функции, например к функции menuCut(ev)
          */
-        cut.setOnAction((ev) -> menuCut());
-        copy.setOnAction((ev) -> menuCopy());
-        paste.setOnAction((ev1) -> menuPaste());
-        delete.setOnAction((ev) -> menuDelete());
+        cut.setOnAction((event) -> menuCut());
+        copy.setOnAction((event) -> menuCopy());
+        paste.setOnAction((event) -> menuPaste());
+        delete.setOnAction((event) -> menuDelete());
     }
 
     private void initDirTree(){
         TreeItem<String> rootItem = new TreeItem<>("root");
-        for (Path p : FileSystems.getDefault().getRootDirectories()) {
-            TreeItem<String> treeItem = new PathTreeItem(p);
+        for (Path pathToRoot : FileSystems.getDefault().getRootDirectories()) {
+            TreeItem<String> treeItem = new PathTreeItem(pathToRoot);
             rootItem.getChildren().add(treeItem);
         }
+        
+        foldersTree.setCellFactory((param) -> new TreeCellExtension());
 
-        tree_folders_list.setCellFactory((p) -> new TreeCellExtension());
+        foldersTree.setOnKeyReleased(event -> {
+            System.out.println("##"+event.toString());
+            if (event.getCode() == KeyCode.ENTER) {
 
-        tree_folders_list.setOnKeyReleased(ev -> {
-            System.out.println("##"+ev.toString());
-            if (ev.getCode() == KeyCode.ENTER) {
-
-                PathTreeItem selectedItem = (PathTreeItem)tree_folders_list.getSelectionModel().getSelectedItem();
-                setCurPath(selectedItem.myPath.toString());
+                PathTreeItem selectedItem = (PathTreeItem) foldersTree.getSelectionModel().getSelectedItem();
+                setCurrentPath(selectedItem.myPath.toString());
                 history.add(selectedItem.myPath);
             }
         });
 
-        tree_folders_list.setOnMouseClicked(ev -> {
-            if (ev.getButton() == MouseButton.PRIMARY) {
-                PathTreeItem selectedItem = (PathTreeItem)tree_folders_list.getSelectionModel().getSelectedItem();
+        foldersTree.setOnMouseClicked(event -> {
+            if (event.getButton() == MouseButton.PRIMARY) {
+                PathTreeItem selectedItem = (PathTreeItem) foldersTree.getSelectionModel().getSelectedItem();
                 if (selectedItem != null) {
-                    setCurPath(selectedItem.myPath.toString());
+                    setCurrentPath(selectedItem.myPath.toString());
                     history.add(selectedItem.myPath);
                     System.out.println(selectedItem.myPath);
                 }
             }
         });
 
-        tree_folders_list.setRoot(rootItem);
-        tree_folders_list.setShowRoot(false);
+        foldersTree.setRoot(rootItem);
+        foldersTree.setShowRoot(false);
     }
 
     @SuppressWarnings("unchecked")
@@ -188,77 +203,77 @@ public class MainWindowController {
         /*
           Обработчик событий для перехода между директориями
          */
-        curPath.addListener((ObservableValue<? extends String> observable, String oldValue, String newValue) -> {
-            ObservableList<Path> l = FXCollections.observableArrayList();
+        currentPath.addListener((ObservableValue<? extends String> observable, String oldValue, String newValue) -> {
+            ObservableList<Path> pathList = FXCollections.observableArrayList();
             try {
                 DirectoryStream<Path> dir= Files.newDirectoryStream(Paths.get(newValue));
                 for (Path file : dir) {
-                    l.add(file);
+                    pathList.add(file);
                 }
             } catch (IOException e) {
-                System.err.println("Directory not found!");
+                alert("Directory not found");
             }
-            ObservableList<Path> l2 = FXCollections.observableArrayList();
-            l.stream()
-                    .sorted((e1, e2) -> {
-                        if (Files.isDirectory(e1) != Files.isDirectory(e2)) {
-                            return (Files.isDirectory(e1)) ? -1 : 1;
+            ObservableList<Path> pathList_ = FXCollections.observableArrayList();
+            pathList.stream()
+                    .sorted((pathToFile, pathToFile_) -> {
+                        if (Files.isDirectory(pathToFile) != Files.isDirectory(pathToFile_)) {
+                            return (Files.isDirectory(pathToFile)) ? -1 : 1;
                         }
-                        return e1.compareTo(e2);
+                        return pathToFile.compareTo(pathToFile_);
                     })
-                    .forEach(l2::add);
-            tableView.setItems(l2);
+                    .forEach(pathList_::add);
+            fileTable.setItems(pathList_);
         });
     }
 
     @SuppressWarnings("unchecked")
     private void initFileTable() {
-        tableView.getColumns().clear();
+        fileTable.getColumns().clear();
 
         /*
           Создание столбцов таблицы и их заполнение
          */
 
-        TableColumn<Path, Path> column1 = new TableColumn<>("File name");
-        column1.setCellValueFactory(param -> new ObjectBinding<Path>() {
+        TableColumn<Path, Path> nameColumn = new TableColumn<>("File name");
+        nameColumn.setCellValueFactory(param -> new ObjectBinding<Path>() {
             @Override
             protected Path computeValue() {
                 return param.getValue();
             }
         });
-        column1.setCellFactory(param -> {
+        nameColumn.setCellFactory(param -> {
             TableCellExtension tbce = new TableCellExtension();
             tbce.setIconImgCache(iconImgCache);
             return tbce;
         });
-        column1.setPrefWidth(200);
-        tableView.getColumns().add(column1);
+        nameColumn.setPrefWidth(200);
+        fileTable.getColumns().add(nameColumn);
 
-        TableColumn<Path, String> column3 = new TableColumn<>("Date");
-        column3.setCellValueFactory(param -> new StringBinding() {
+        TableColumn<Path, String> dateColumn = new TableColumn<>("Date");
+        dateColumn.setCellValueFactory(param -> new StringBinding() {
             @Override
             protected String computeValue() {
                 try {
                     SimpleDateFormat sdf = new SimpleDateFormat("yyyy/MM/dd HH:mm");
                     return sdf.format(new Date(Files.getLastModifiedTime(param.getValue()).toMillis()));
                 } catch (IOException e) {
-                    e.printStackTrace();
+                    alert(e.getMessage());
                     return "";
                 }
             }
         });
-        column3.setPrefWidth(200);
-        tableView.getColumns().add(column3);
+        dateColumn.setPrefWidth(200);
+        fileTable.getColumns().add(dateColumn);
 
-        TableColumn<Path, String> column2 = new TableColumn<>("File size");
-        column2.setCellValueFactory((TableColumn.CellDataFeatures<Path, String> arg0) -> new StringBinding() {
+        TableColumn<Path, String> sizeColumn = new TableColumn<>("File size");
+        sizeColumn.setCellValueFactory((TableColumn.CellDataFeatures<Path, String> file) -> new StringBinding() {
              @Override
              protected String computeValue() {
-                 if (Files.isDirectory(arg0.getValue())) return "dir";
+                 if (Files.isDirectory(file.getValue())) return "dir";
                  try {
-                     return getFileSizeStr(Files.size(arg0.getValue()));
+                     return getFileSizeStr(Files.size(file.getValue()));
                  } catch (IOException e) {
-                     e.printStackTrace();
+                     alert(e.getMessage());
                      return "-";
                  }
              }
@@ -271,9 +286,9 @@ public class MainWindowController {
                  }
              }
          });
-        column2.setPrefWidth(110);
+        sizeColumn.setPrefWidth(110);
 
-        column2.setCellFactory(param -> new TableCell<Path, String>() {
+        sizeColumn.setCellFactory(param -> new TableCell<Path, String>() {
             @Override
             protected void updateItem(String item, boolean empty) {
                 super.updateItem(item, empty);
@@ -282,28 +297,28 @@ public class MainWindowController {
             }
         });
 
-        tableView.getColumns().add(column2);
+        fileTable.getColumns().add(sizeColumn);
 
-        tableView.setOnMouseClicked(ev -> {
-            if(ev.isControlDown())
-                tableView.getSelectionModel().setSelectionMode(
+        fileTable.setOnMouseClicked(event -> {
+            if(event.isControlDown())
+                fileTable.getSelectionModel().setSelectionMode(
                         SelectionMode.MULTIPLE);
             else
-                tableView.getSelectionModel().setSelectionMode(
+                fileTable.getSelectionModel().setSelectionMode(
                         SelectionMode.SINGLE);
-            if (ev.getButton() == MouseButton.PRIMARY) {
-                if (ev.getClickCount() == 2 && tableView.getSelectionModel().getSelectedItem() != null) {
-                    Path path = (Path) tableView.getSelectionModel().getSelectedItem();
+            if (event.getButton() == MouseButton.PRIMARY) {
+                if (event.getClickCount() == 2 && fileTable.getSelectionModel().getSelectedItem() != null) {
+                    Path path = (Path) fileTable.getSelectionModel().getSelectedItem();
                     if (Files.isDirectory(path)) {
-                        setCurPath(path.toString());
+                        setCurrentPath(path.toString());
                         history.add(path);
-                        label_current_folder.setText(valueOf(path));
+                        currentFolderLabel.setText(valueOf(path));
                     } else {
                         Thread thr = new Thread(()->{
                             try {
                                 Desktop.getDesktop().open(path.toFile());
                             } catch (IOException e) {
-                                e.printStackTrace();
+                                alert(e.getMessage());
                             }
                         });
                         thr.start();
@@ -314,44 +329,44 @@ public class MainWindowController {
             }
             else {
 
-                contextMenu.show(tableView, ev.getScreenX(), ev.getScreenY());
+                popupMenu.show(fileTable, event.getScreenX(), event.getScreenY());
             }
         });
 
-        tableView.setOnKeyReleased(ev -> {
-            if (ev.getCode() == KeyCode.RIGHT && !ev.isAltDown()) {
-                Path path = (Path) tableView.getSelectionModel().getSelectedItem();
+        fileTable.setOnKeyReleased(event -> {
+            if (event.getCode() == KeyCode.RIGHT && !event.isAltDown()) {
+                Path path = (Path) fileTable.getSelectionModel().getSelectedItem();
                 if (path != null && Files.isDirectory(path)) {
-                    setCurPath(path.toString());
+                    setCurrentPath(path.toString());
                     history.add(path);
-                    label_current_folder.setText(valueOf(path));
-                    tableView.getSelectionModel().selectFirst();
-                    tableView.scrollTo(0);
+                    currentFolderLabel.setText(valueOf(path));
+                    fileTable.getSelectionModel().selectFirst();
+                    fileTable.scrollTo(0);
                 }
-            } else if (ev.getCode() == KeyCode.LEFT && !ev.isAltDown()) {
-                Path oldPath = Paths.get(getCurPath());
-                setCurPath(oldPath.getParent().toString());
+            } else if (event.getCode() == KeyCode.LEFT && !event.isAltDown()) {
+                Path oldPath = Paths.get(getCurrentPath());
+                setCurrentPath(oldPath.getParent().toString());
                 history.add(oldPath.getParent());
-                tableView.getSelectionModel().select(oldPath);
-                tableView.scrollTo(oldPath);
+                fileTable.getSelectionModel().select(oldPath);
+                fileTable.scrollTo(oldPath);
             }
         });
     }
 
     private void menuCut(){
-        if(tableView.getSelectionModel().getSelectedItems().size()>0) {
-            ObservableList itemsToCopy = tableView.getSelectionModel().getSelectedItems();
-            Path path[] = new Path[itemsToCopy.size()];
-            toCopy = new File[itemsToCopy.size()];
+        if(fileTable.getSelectionModel().getSelectedItems().size()>0) {
+            ObservableList itemsToCopy = fileTable.getSelectionModel().getSelectedItems();
+            Path pathToCopiesFile[] = new Path[itemsToCopy.size()];
+            filesToCopy = new File[itemsToCopy.size()];
             for (int i = 0; i < itemsToCopy.size(); i++) {
-                path[i] = (Path) itemsToCopy.get(i);
-                if (Files.isDirectory(path[i])) {
-                    toCopy[i] = path[i].toFile();
-                    toMove = toCopy;
-                    directoryMove = true;
+                pathToCopiesFile[i] = (Path) itemsToCopy.get(i);
+                if (Files.isDirectory(pathToCopiesFile[i])) {
+                    filesToCopy[i] = pathToCopiesFile[i].toFile();
+                    filesToMove = filesToCopy;
+                    cutCheck = true;
                 } else {
-                    toCopy[i] = path[i].toFile();
-                    toMove = toCopy;
+                    filesToCopy[i] = pathToCopiesFile[i].toFile();
+                    filesToMove = filesToCopy;
                 }
             }
         }
@@ -361,22 +376,22 @@ public class MainWindowController {
      * Обработчик кнопки copy в popupMenu
      */
     private void menuCopy(){
-        if(tableView.getSelectionModel().getSelectedItems().size()>0) {// Проверка выбран ли файл для копирования
-            ObservableList itemsToCopy = tableView.getSelectionModel().getSelectedItems();// Записываем все выбранные файлы в таблице
+        if(fileTable.getSelectionModel().getSelectedItems().size()>0) {// Проверка выбран ли файл для копирования
+            ObservableList itemsToCopy = fileTable.getSelectionModel().getSelectedItems();// Записываем все выбранные файлы в таблице
             Path path[] = new Path[itemsToCopy.size()];
-            toCopy = new File[itemsToCopy.size()];
+            filesToCopy = new File[itemsToCopy.size()];
             for (int i = 0; i < itemsToCopy.size(); i++) {
                 path[i] = (Path) itemsToCopy.get(i);
                 if (Files.isDirectory(path[i])) {
-                    toCopy[i] = path[i].toFile();
-                    directoryMove = true;
+                    filesToCopy[i] = path[i].toFile();
+                    cutCheck = true;
 
                 } else {
-                    toCopy[i] = path[i].toFile();
+                    filesToCopy[i] = path[i].toFile();
                 }
             }
         }
-       //  = (Path) tableView.getSelectionModel().getSelectedItems();
+       //  = (Path) fileTable.getSelectionModel().getSelectedItems();
 
     }
 
@@ -384,18 +399,13 @@ public class MainWindowController {
      * Обработчик кнопки delete в popupMenu
      */
     private void menuDelete(){
-        if(tableView.getSelectionModel().getSelectedItems().size()>0) { //Выбран ли файл для удаления
-            ObservableList itemsToDelete = tableView.getSelectionModel().getSelectedItems();
+        if(fileTable.getSelectionModel().getSelectedItems().size()>0) { //Выбран ли файл для удаления
+            ObservableList itemsToDelete = fileTable.getSelectionModel().getSelectedItems();
             Path path[] = new Path[itemsToDelete.size()]; //Создание массива путей к файлам для удаления
             for (int i = 0; i < itemsToDelete.size(); i++) {
-                if (tableView.getSelectionModel().getSelectedItem() != null) {
+                if (fileTable.getSelectionModel().getSelectedItem() != null) {
                     path[i] = (Path) itemsToDelete.get(i);
-                    try {
-                        delete(path[i].toFile()); // Вызов функции delete из com.med.Utils для удаления файлов
-
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    }
+                    delete(path[i].toFile()); // Вызов функции delete из com.med.Utils для удаления файлов
                 }
             }
             updatePath();
@@ -411,69 +421,69 @@ public class MainWindowController {
         Task<Void> task = new Task<Void>() {
             @Override
             public Void call() {
-                if (toCopy != null)
-                    for (int i = 0; i < toCopy.length; i++) {
-                        if (tableView.getSelectionModel().getSelectedItem() != null) {
-                            Path path = (Path) tableView.getSelectionModel().getSelectedItem();
+                if (filesToCopy != null)
+                    for (int i = 0; i < filesToCopy.length; i++) {
+                        if (fileTable.getSelectionModel().getSelectedItem() != null) {
+                            Path path = (Path) fileTable.getSelectionModel().getSelectedItem();
 
                             if (Files.isDirectory(path)) {
 
                                 try {
-                                    if (!directoryMove) {
-                                        String target = path.toString() + "/" + toCopy[i].getName();
+                                    if (!cutCheck) {
+                                        String target = path.toString() + "/" + filesToCopy[i].getName();
                                         path = Paths.get(target);
-                                        if (toMove == null)
-                                            copyDir(toCopy[i], path.toFile(), false);
+                                        if (filesToMove == null)
+                                            copyDir(filesToCopy[i], path.toFile(), false);
                                         else {
-                                            copyDir(toCopy[i], path.toFile(), false);
-                                            if (i == toCopy.length - 1)
-                                                toMove = null;
+                                            copyDir(filesToCopy[i], path.toFile(), false);
+                                            if (i == filesToCopy.length - 1)
+                                                filesToMove = null;
 
                                         }
                                     } else {
-                                        directoryMove = false;
-                                        if (toMove == null)
-                                            copyDir(toCopy[i], path.toFile(), false);
+                                        cutCheck = false;
+                                        if (filesToMove == null)
+                                            copyDir(filesToCopy[i], path.toFile(), false);
                                         else {
-                                            copyDir(toCopy[i], path.toFile(), true);
-                                            if (i == toCopy.length - 1)
-                                                toMove = null;
+                                            copyDir(filesToCopy[i], path.toFile(), true);
+                                            if (i == filesToCopy.length - 1)
+                                                filesToMove = null;
                                         }
                                     }
                                 } catch (IOException e) {
-                                    e.printStackTrace();
+                                    alert(e.getMessage());
                                 }
 
                             }
                         } else {
-                            String target = getCurPath();
+                            String target = getCurrentPath();
                             if (Files.isDirectory(Paths.get(target))) {
                                 try {
-                                    if (!directoryMove) {
-                                        target = target + "/" + toCopy[i].getName();
+                                    if (!cutCheck) {
+                                        target = target + "/" + filesToCopy[i].getName();
                                         Path path = Paths.get(target);
-                                        if (toMove == null)
-                                            copyDir(toCopy[i], path.toFile(), false);
+                                        if (filesToMove == null)
+                                            copyDir(filesToCopy[i], path.toFile(), false);
                                         else {
-                                            copyDir(toCopy[i], path.toFile(), true);
-                                            if (i == toCopy.length - 1)
-                                                toMove = null;
+                                            copyDir(filesToCopy[i], path.toFile(), true);
+                                            if (i == filesToCopy.length - 1)
+                                                filesToMove = null;
                                         }
                                     } else {
-                                        directoryMove = false;
-                                        target = target + "/" + toCopy[i].getName();
+                                        cutCheck = false;
+                                        target = target + "/" + filesToCopy[i].getName();
                                         Path path = Paths.get(target);
 
-                                        if (toMove == null)
-                                            copyDir(toCopy[i], path.toFile(), false);
+                                        if (filesToMove == null)
+                                            copyDir(filesToCopy[i], path.toFile(), false);
                                         else {
-                                            copyDir(toCopy[i], path.toFile(), true);
-                                            if (i == toCopy.length - 1)
-                                                toMove = null;
+                                            copyDir(filesToCopy[i], path.toFile(), true);
+                                            if (i == filesToCopy.length - 1)
+                                                filesToMove = null;
                                         }
                                     }
                                 } catch (IOException e) {
-                                    e.printStackTrace();
+                                    alert(e.getMessage());
                                 }
                             }
                         }
@@ -493,8 +503,8 @@ public class MainWindowController {
     @FXML
     public void next(){
             Path path = history.next();
-            setCurPath(path.toString());
-            label_current_folder.setText(valueOf(path));
+            setCurrentPath(path.toString());
+            currentFolderLabel.setText(valueOf(path));
     }
     /*
      * Обработчик кнопки back
@@ -503,8 +513,8 @@ public class MainWindowController {
     @FXML
     public void back(){
             Path path = history.back();
-            setCurPath(path.toString());
-            label_current_folder.setText(valueOf(path));
+            setCurrentPath(path.toString());
+            currentFolderLabel.setText(valueOf(path));
     }
 
     /*
@@ -522,7 +532,7 @@ public class MainWindowController {
         Optional<String> result = dialog.showAndWait();
         if (result.isPresent()){
             String folderName = "/"+result.get();
-            String pathToFile = getCurPath()+folderName;
+            String pathToFile = getCurrentPath()+folderName;
 
            createDir(new File(pathToFile));
         }
@@ -544,14 +554,14 @@ public class MainWindowController {
         if (result.isPresent()){
             String name = result.get();
             listFind.setVisible(true);
-            tableView.setVisible(false);
+            fileTable.setVisible(false);
 
             Thread thr = new Thread(() -> {
                 try {
-                    findFile(name, Paths.get(getCurPath()).toFile()); //Вызов функции поиска
+                    findFile(name, Paths.get(getCurrentPath()).toFile()); //Вызов функции поиска
                     Thread.sleep(200);
                 } catch (IOException | InterruptedException e) {
-                    e.printStackTrace();
+                    alert(e.getMessage());
                 }
             });
             thr.start();
@@ -567,19 +577,19 @@ public class MainWindowController {
      */
 
 
-    private void findFile(String name, File file1)throws IOException {
+    private void findFile(String name, File directory)throws IOException {
 
-        File[] list = file1.listFiles();
+        File[] list = directory.listFiles();
         if (list != null) {
-            for (File file2 : list) {
-                if (file2.isDirectory()) {
+            for (File fileInDirectory : list) {
+                if (fileInDirectory.isDirectory()) {
                     try {
-                        findFile(name, file2);
+                        findFile(name, fileInDirectory);
                     } catch (IOException e) {
-                        e.printStackTrace();
+                       alert(e.getMessage());
                     }
-                } else if (file2.getName().contains(name))
-                    Platform.runLater(() -> listFind.getItems().add(file2.getParentFile().toString() + "`" + file2.getName()));
+                } else if (fileInDirectory.getName().contains(name))
+                    Platform.runLater(() -> listFind.getItems().add(fileInDirectory.getParentFile().toString() + "`" + fileInDirectory.getName()));
 
             }
         }
@@ -591,17 +601,17 @@ public class MainWindowController {
      */
     private void updatePath(){
 
-        String current_path = getCurPath();
+        String current_path = getCurrentPath();
         Path updatePath = Paths.get(System.getProperty("user.home"));
-        setCurPath(updatePath.toString());
-        setCurPath(current_path);
+        setCurrentPath(updatePath.toString());
+        setCurrentPath(current_path);
 
     }
 
     private void disableFindTable(){
 
         listFind.setVisible(false);
-        tableView.setVisible(true);
+        fileTable.setVisible(true);
     }
 
     /*
@@ -642,6 +652,48 @@ public class MainWindowController {
 
     }
 
+    private static boolean delete(File file) {
+
+        if (file.isDirectory()) {
+
+            String[] files = file.list();
+
+            assert files != null;
+            if (files.length == 0) {
+
+                return file.delete();
+
+            } else {
+
+
+                for (String temp : files) {
+
+                    File fileDelete = new File(file, temp);
+
+                    delete(fileDelete);
+                }
+
+                String[] fileList = file.list();
+
+                assert fileList != null;
+                if (fileList.length == 0) {
+                    return file.delete();
+
+                }
+            }
+        } else {
+            return file.delete();
+        }
+
+        return false;
+    }
+
+    private String getOS(){
+        return System.getProperty("os.name").toLowerCase();
+    }
+
+    private void setOs(String osName){this.osName = osName;}
+
     private boolean createDir(File fileToCreate){
         return fileToCreate.mkdirs();
     }
@@ -649,11 +701,11 @@ public class MainWindowController {
     /*
      * Функция для установки текущего каталога
      */
-    private void setCurPath(String curPath) { this.curPath.set(curPath); }
+    private void setCurrentPath(String currentPath) { this.currentPath.set(currentPath); }
     /*
      * Функция получения пути текущего каталога
      */
-    private String getCurPath() { return curPath.get(); }
+    private String getCurrentPath() { return currentPath.get(); }
 
 
 }

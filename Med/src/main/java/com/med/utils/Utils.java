@@ -19,7 +19,6 @@ import java.awt.image.BufferedImage;
 import java.awt.image.RenderedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 
@@ -62,36 +61,6 @@ public class Utils {
 
     }
 
-
-    public static void delete(File file)
-            throws IOException{
-
-        if(file.isDirectory()){
-
-            if(file.list().length==0){
-
-                file.delete();
-
-            }else{
-
-                String files[] = file.list();
-
-                for (String temp : files) {
-
-                    File fileDelete = new File(file, temp);
-
-                    delete(fileDelete);
-                }
-
-                if(file.list().length==0){
-                    file.delete();
-                }
-            }
-
-        }else{
-            file.delete();
-        }
-    }
 
 
 }
